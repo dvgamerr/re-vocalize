@@ -1,16 +1,156 @@
 ---
+import Layout from '../layouts/Layout.astro'
+
+
 
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<Layout title="Speaker Identification">
+	<main class="container mx-auto p-4">
+		<h1 class="text-2xl font-bold mb-4">🎙️ Speaker Identification Demo</h1>
+		
+		<div class="flex gap-4 mb-4">
+			<button id="startButton" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+				Start Listening
+			</button>
+			<button id="saveButton" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+				Save Current as Speaker
+			</button>
+		</div>
+		
+		<div id="result" class="bg-gray-100 p-4 rounded-lg shadow-md text-lg">
+			Waiting to start...
+		</div>
+	</main>
+
+<script type="text/javascript" src="https://unpkg.com/meyda@5.6.3/dist/web/meyda.min.js"></script>
+<script is:inline>
+
+  const cosineSimilarity = (a, b) => {
+      const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
+      const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+      const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+      return dot / (normA * normB);
+    }
+
+  const averageMFCC = (mfccs) => {
+    const n = mfccs.length;
+    const m = mfccs[0].length;
+    const avg = Array(m).fill(0);
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < m; j++) {
+        avg[j] += mfccs[i][j];
+      }
+    }
+    return avg.map(v => v / n);
+  }
+
+
+  let currentMFCCs = [];
+  let audioContext, analyzer;
+  let isListening = false;
+
+  const start = async () => {
+    if (typeof Meyda === "undefined") return 
+    
+    if (isListening) {
+      stop();
+      return;
+    }
+  
+    try {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const source = audioContext.createMediaStreamSource(stream);
+
+      analyzer = Meyda.createMeydaAnalyzer({
+        audioContext,
+        source,
+        bufferSize: 512,
+        featureExtractors: ['rms', 'zcr', 'mfcc'],
+        callback: features => {
+
+          const { rms, zcr, mfcc } = features;
+          const isVoice = rms > 0.02 && zcr > 2 && zcr < 15;
+
+          if (isVoice) {
+            currentMFCCs.push(mfcc);
+            const result = identifySpeaker(mfcc);
+            document.getElementById('result').innerHTML =
+              `<p class="font-bold">🎤 Voice Detected</p>
+                <p>Closest Speaker: ${result.name}</p>
+                <p>Similarity: ${result.similarity.toFixed(2)}</p>
+                <div class="mt-2 p-2 bg-gray-200 rounded">
+                  <p><strong>RMS:</strong> ${rms.toFixed(4)}</p>
+                  <p><strong>ZCR:</strong> ${zcr.toFixed(4)}</p>
+                  <p><strong>MFCC:</strong> [${mfcc.slice(0, 3).map(v => v.toFixed(2)).join(', ')}...]</p>
+                </div>
+                <p class="text-sm text-gray-600 mt-2">MFCC data points collected: ${currentMFCCs.length}</p>`;
+          } else {
+            document.getElementById('result').innerHTML = 
+              `<p>Waiting for voice...</p>
+                <div class="mt-2 p-2 bg-gray-200 rounded">
+                  <p><strong>RMS:</strong> ${rms.toFixed(4)}</p>
+                  <p><strong>ZCR:</strong> ${zcr.toFixed(4)}</p>
+                  <p><strong>MFCC:</strong> [${mfcc.slice(0, 5).map(v => v.toFixed(2)).join(', ')}...]</p>
+                </div>
+                <p class="text-sm text-gray-600 mt-2">MFCC data points collected: ${currentMFCCs.length}</p>`;
+          }
+        }
+      });
+
+
+      analyzer.start();
+      isListening = true;
+      document.getElementById('startButton').textContent = 'Stop Listening';
+      document.getElementById('startButton').classList.add('bg-red-500', 'hover:bg-red-700');
+      document.getElementById('startButton').classList.remove('bg-blue-500', 'hover:bg-blue-700');
+    } catch (error) {
+      console.error("Error starting audio analysis:", error);
+      document.getElementById('result').innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+    }
+  }
+
+  const stop = () => {
+    if (analyzer) {
+      analyzer.stop();
+    }
+    if (audioContext) {
+      audioContext.close();
+    }
+    
+    isListening = false;
+    document.getElementById('startButton').textContent = 'Start Listening';
+    document.getElementById('startButton').classList.add('bg-blue-500', 'hover:bg-blue-700');
+    document.getElementById('startButton').classList.remove('bg-red-500', 'hover:bg-red-700');
+    document.getElementById('result').innerHTML = 'Listening stopped';
+  }
+
+  function saveProfile(name) {
+    const avg = averageMFCC(currentMFCCs);
+    const profiles = JSON.parse(localStorage.getItem('voiceProfiles') || '{}');
+    profiles[name] = avg;
+    localStorage.setItem('voiceProfiles', JSON.stringify(profiles));
+    currentMFCCs = [];
+  }
+
+  function identifySpeaker(mfccVector) {
+    const profiles = JSON.parse(localStorage.getItem('voiceProfiles') || '{}');
+    const results = Object.entries(profiles).map(([name, refVec]) => {
+      const sim = cosineSimilarity(mfccVector, refVec);
+      return { name, similarity: sim };
+    });
+
+    if (results.length === 0) return { name: 'Unknown', similarity: 0 };
+    results.sort((a, b) => b.similarity - a.similarity);
+    return results[0];
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('startButton').addEventListener('click', start);
+    document.getElementById('saveButton').addEventListener('click', () => {
+      saveProfile('default');
+    });
+  });
+</script>
+</Layout>

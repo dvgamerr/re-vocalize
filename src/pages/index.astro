@@ -75,27 +75,20 @@ import Layout from '../layouts/Layout.astro'
 
           if (isVoice) {
             currentMFCCs.push(mfcc);
-            const result = identifySpeaker(mfcc);
-            document.getElementById('result').innerHTML =
-              `<p class="font-bold">🎤 Voice Detected</p>
-                <p>Closest Speaker: ${result.name}</p>
-                <p>Similarity: ${result.similarity.toFixed(2)}</p>
+          }
+
+          const result = identifySpeaker(mfcc);
+          document.getElementById('result').innerHTML =
+              `<p class="font-bold">${isVoice ? '🎤 Voice Detected' : 'Waiting for voice...'}</p>
+                <p>Closest Speaker: ${isVoice ? result.name : 'N/A'}</p>
+                <p>Similarity: ${isVoice ? result.similarity.toFixed(2) : '0.00'}</p>
                 <div class="mt-2 p-2 bg-gray-200 rounded">
                   <p><strong>RMS:</strong> ${rms.toFixed(4)}</p>
                   <p><strong>ZCR:</strong> ${zcr.toFixed(4)}</p>
                   <p><strong>MFCC:</strong> [${mfcc.slice(0, 3).map(v => v.toFixed(2)).join(', ')}...]</p>
                 </div>
                 <p class="text-sm text-gray-600 mt-2">MFCC data points collected: ${currentMFCCs.length}</p>`;
-          } else {
-            document.getElementById('result').innerHTML = 
-              `<p>Waiting for voice...</p>
-                <div class="mt-2 p-2 bg-gray-200 rounded">
-                  <p><strong>RMS:</strong> ${rms.toFixed(4)}</p>
-                  <p><strong>ZCR:</strong> ${zcr.toFixed(4)}</p>
-                  <p><strong>MFCC:</strong> [${mfcc.slice(0, 5).map(v => v.toFixed(2)).join(', ')}...]</p>
-                </div>
-                <p class="text-sm text-gray-600 mt-2">MFCC data points collected: ${currentMFCCs.length}</p>`;
-          }
+
         }
       });
 
